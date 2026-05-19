@@ -1,0 +1,46 @@
+<?xml version="1.0"?>
+<sdf version="1.7">
+  <model name="havyard_ship_dynamic">
+    <static>false</static>
+    <allow_auto_disable>false</allow_auto_disable>
+    <link name="base_link">
+      <!-- Manual marine motion mode: disable gravity and let ship_dp_hold drive motion. -->
+      <gravity>false</gravity>
+      <inertial>
+        <mass>2000000.0</mass>
+        <pose>0 -2.0 0 0 0 0</pose>
+        <inertia>
+          <ixx>533333333.5</ixx>
+          <ixy>0.0</ixy>
+          <ixz>0.0</ixz>
+          <iyy>6475000000.0</iyy>
+          <iyz>0.0</iyz>
+          <izz>6606666666.5</izz>
+        </inertia>
+      </inertial>
+
+      <visual name="visual">
+        <geometry>
+          <mesh>
+            <uri>model://Ship/havyard824.dae</uri>
+            <scale>1 1 1</scale>
+          </mesh>
+        </geometry>
+      </visual>
+
+      <!-- Simple contact mesh for deck/container interaction. -->
+      <collision name="deck_contact_collision">
+        <pose>0 -1.5 0 1.5708 0 0</pose>
+        <geometry>
+          <mesh>
+            <uri>model://Ship/Havyard_collision_mesh.obj</uri>
+            <scale>1 1 1</scale>
+          </mesh>
+        </geometry>
+      </collision>
+
+    </link>
+
+    <plugin filename="gz-sim-velocity-control-system" name="gz::sim::systems::VelocityControl" />
+  </model>
+</sdf>

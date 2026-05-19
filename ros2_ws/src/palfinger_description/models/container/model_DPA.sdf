@@ -1,0 +1,25 @@
+<?xml version="1.0"?>
+<sdf version="1.7">
+  <model name="container_red">
+    <static>false</static>
+    <link name="base_link">
+      <visual name="visual">
+        <geometry>
+          <mesh>
+            <uri>model://palfinger_description/models/container/meshes/containers_Red.obj</uri>
+            <scale>1 1 1</scale>
+          </mesh>
+        </geometry>
+      </visual>
+
+      <collision name="collision">
+        <pose>0.022499 1.409209 -0.040795 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>2.44 2.9 2.990001</size>
+          </box>
+        </geometry>
+      </collision>
+    </link>
+  </model>
+</sdf>

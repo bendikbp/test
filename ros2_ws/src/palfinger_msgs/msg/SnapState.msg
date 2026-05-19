@@ -1,0 +1,8 @@
+bool attached
+string attached_target_id
+string attached_target_frame
+bool candidate_in_range
+string candidate_target_id
+string candidate_target_frame
+float64 candidate_distance
+string status

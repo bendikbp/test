@@ -1,0 +1,58 @@
+<?xml version="1.0"?>
+<sdf version="1.7">
+  <model name="container_blue">
+    <static>false</static>
+    <link name="base_link">
+      <inertial>
+        <pose>-0.024303 1.411676 -0.00233 0 0 0</pose>
+        <mass>2500.0</mass>
+        <inertia>
+          <ixx>2891.6833333333334</ixx>
+          <ixy>0.0</ixy>
+          <ixz>0.0</ixz>
+          <iyy>2482.2833333333333</iyy>
+          <iyz>0.0</iyz>
+          <izz>2393.9333333333334</izz>
+        </inertia>
+      </inertial>
+
+      <visual name="visual">
+        <pose>29.961279 1.391204 -1.375701 0 0 0</pose>
+        <geometry>
+          <mesh>
+            <uri>model://palfinger_description/models/crane/meshes/container_visual.obj</uri>
+            <scale>1 1 1</scale>
+          </mesh>
+        </geometry>
+      </visual>
+
+      <collision name="collision">
+        <pose>-0.024303 1.411676 -0.00233 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>2.44 2.9 2.99</size>
+          </box>
+        </geometry>
+      </collision>
+
+      <!-- Temporary visual-only snap hitbox marker for testing.
+      <visual name="snap_hitbox_visual">
+        <pose>-0.024303 1.411676 1.94267 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>3.05 1.25 0.9</size>
+          </box>
+        </geometry>
+        <material>
+          <ambient>0.1 0.9 0.2 0.20</ambient>
+          <diffuse>0.1 0.9 0.2 0.20</diffuse>
+          <specular>0.05 0.05 0.05 0.20</specular>
+          <emissive>0.0 0.1 0.0 0.10</emissive>
+        </material>
+        <transparency>0.65</transparency>
+        <cast_shadows>false</cast_shadows>
+      </visual>
+      -->
+    </link>
+  </model>
+</sdf>

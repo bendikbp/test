@@ -1,0 +1,31 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>palfinger_msgs</name>
+  <version>0.0.0</version>
+  <description>Interface definitions (messages) for controlling the crane.</description>
+
+  <maintainer email="local@todo.todo">local</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <!-- Message generation -->
+  <buildtool_depend>rosidl_default_generators</buildtool_depend>
+
+  <!-- Dependencies used in .msg files (keep even if not used yet) -->
+  <depend>geometry_msgs</depend>
+  <depend>std_msgs</depend>
+
+  <!-- Runtime support for generated messages -->
+  <exec_depend>rosidl_default_runtime</exec_depend>
+
+  <!-- Required for interface packages -->
+  <member_of_group>rosidl_interface_packages</member_of_group>
+
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

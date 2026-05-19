@@ -1,0 +1,12 @@
+std_msgs/Header header
+float64 hook_world_x
+float64 hook_world_y
+float64 hook_world_z
+float64 hook_to_container_top
+bool hook_over_container
+float64 hook_to_ship_deck
+bool hook_over_ship_deck
+float64 hook_to_platform_deck
+bool hook_over_platform_deck
+float64 load_mass_kg
+string status

@@ -1,0 +1,18 @@
+controller_manager:
+  ros__parameters:
+    update_rate: 1000
+
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+
+    crane_controller:
+      type: forward_command_controller/ForwardCommandController
+
+crane_controller:
+  ros__parameters:
+    joints:
+      - tower_yaw_joint
+      - boom_pitch_joint
+      - trolley_joint
+      - hoist_joint
+    interface_name: position

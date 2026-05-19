@@ -1,0 +1,56 @@
+controller_manager:
+  ros__parameters:
+    update_rate: 100
+
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+
+    crane_slew_controller:
+      type: position_controllers/JointGroupPositionController
+
+    crane_reach_controller:
+      type: position_controllers/JointGroupPositionController
+
+crane_slew_controller:
+  ros__parameters:
+    joints:
+      - boom_yaw_joint
+
+crane_reach_controller:
+  ros__parameters:
+    joints:
+      - trolley_joint
+      - winch_joint
+      - winch_drum_joint
+      - wire_vis_01_joint
+      - wire_vis_02_joint
+      - wire_vis_03_joint
+      - wire_vis_04_joint
+      - wire_vis_05_joint
+      - wire_vis_06_joint
+      - wire_vis_07_joint
+      - wire_vis_08_joint
+      - wire_vis_09_joint
+      - wire_vis_10_joint
+      - wire_vis_11_joint
+      - wire_vis_12_joint
+      - wire_vis_13_joint
+      - wire_vis_14_joint
+      - wire_vis_15_joint
+      - wire_vis_16_joint
+      - wire_vis_17_joint
+      - wire_vis_18_joint
+      - wire_vis_19_joint
+      - wire_vis_20_joint
+      - wire_vis_21_joint
+      - wire_vis_22_joint
+      - wire_vis_23_joint
+      - wire_vis_24_joint
+      - wire_vis_25_joint
+      - wire_vis_26_joint
+      - wire_vis_27_joint
+      - wire_vis_28_joint
+      - wire_vis_29_joint
+      - wire_vis_30_joint
+      - wire_vis_31_joint
+      - wire_vis_32_joint

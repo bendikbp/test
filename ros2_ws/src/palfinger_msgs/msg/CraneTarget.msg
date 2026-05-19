@@ -1,0 +1,4 @@
+float64 slew_position
+float64 trolley_position
+float64 winch_length
+bool enable

@@ -1,0 +1,26 @@
+# colcon artifacts (never commit)
+build/
+install/
+log/
+
+# ROS 2 workspace artifacts
+ros2_ws/build/
+ros2_ws/install/
+ros2_ws/log/
+
+# Python
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.egg-info/
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Local mesh backups
+ros2_ws/src/palfinger_description/models/container/meshes/_backup_*/

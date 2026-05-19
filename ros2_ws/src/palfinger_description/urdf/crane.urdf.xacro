@@ -1,0 +1,744 @@
+<?xml version="1.0"?>
+<robot name="crane" xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <xacro:arg name="controllers_yaml" default="$(find palfinger_description)/config/crane_controllers.yaml"/>
+  <xacro:arg name="wire_segments" default="32"/>
+  <xacro:arg name="wire_curve_exp" default="1.5293"/>
+  <xacro:property name="wire_segments_arg" value="$(arg wire_segments)"/>
+  <xacro:property name="wire_curve_exp_arg" value="$(arg wire_curve_exp)"/>
+
+  <!-- More robust in ROS 2 than $(find ...) -->
+  <xacro:property name="mesh_dir" value="package://palfinger_description/meshes"/>
+
+  <xacro:property name="scale" value="1.0"/>
+  <xacro:property name="hugin_scale" value="1.0"/>
+  <xacro:property name="fixed_base" value="true"/>
+  <!-- Meshes are authored in global-like coordinates (tower z max ~= 9.995, boom z min ~= 10.637),
+       so the boom joint needs a small negative z correction to remove the visual gap. -->
+  <xacro:property name="boom_z" value="-0.642192"/>
+  <!-- Meshes are in large global-like coordinates, so trolley travel needs a
+       larger range to reach the visible boom tip. -->
+  <xacro:property name="trolley_min" value="-28.0"/>
+  <xacro:property name="trolley_max" value=" 2.0"/>
+  <xacro:property name="wire_length" value="20.0"/>
+  <xacro:property name="wire_radius" value="0.035"/>
+  <!-- Attach the wire at the trolley in the trolley mesh frame. -->
+  <xacro:property name="wire_anchor_x" value="0.0"/>
+  <xacro:property name="wire_anchor_y" value="0.0"/>
+  <xacro:property name="wire_anchor_z" value="18.50"/>
+  <xacro:property name="wire_sway_limit" value="0.0010"/>
+  <xacro:property name="wire_sway_damping" value="5000.0"/>
+  <xacro:property name="wire_sway_friction" value="2000.0"/>
+  <xacro:property name="hook_mount_z_correction" value="0.0"/>
+  <xacro:property name="winch_min_length" value="0.4"/>
+  <xacro:property name="winch_max_length" value="105.0"/>
+  <xacro:property name="winch_drum_radius" value="0.14"/>
+  <xacro:property name="winch_drum_length" value="0.22"/>
+  <xacro:property name="wire_top_cover_radius" value="0.22"/>
+  <xacro:property name="wire_top_cover_length" value="1.85"/>
+  <xacro:property name="wire_single_visual_length" value="${winch_max_length}"/>
+  <xacro:property name="wire_visual_segments" value="${float(wire_segments_arg)}"/>
+  <xacro:property name="wire_curve_exp" value="${max(float(wire_curve_exp_arg), 0.05)}"/>
+  <xacro:property name="wire_visual_overlap" value="1.0"/>
+  <xacro:property name="wire_top_hidden_length" value="0.80"/>
+  <xacro:property name="wire_visual_half_length" value="0.0"/>
+  <xacro:property name="hugin_ground_offset_z" value="${106.9381 * hugin_scale}"/>
+  <xacro:property name="crane_mount_x" value="0.0"/>
+  <xacro:property name="crane_mount_y" value="0.0"/>
+  <!-- Deck around the center is ~36.8 in the raw Hugin mesh coordinates -->
+  <xacro:property name="crane_mount_z" value="${143.8 * hugin_scale}"/>
+
+  <!-- Visual wire made of variable-size segments from curved normalized spacing. -->
+  <xacro:macro name="wire_visual_segment" params="idx idx_norm idx_prev_norm">
+    <xacro:property name="seg_frac" value="${max(idx_norm - idx_prev_norm, 1e-6)}"/>
+    <xacro:property name="segment_top" value="${winch_max_length * idx_prev_norm}"/>
+    <xacro:property name="segment_bottom" value="${winch_max_length * idx_norm}"/>
+    <xacro:property name="visible_top" value="${min(max(wire_top_hidden_length, segment_top), segment_bottom)}"/>
+    <xacro:property name="wire_visual_seg_length" value="${max((segment_bottom - visible_top) * wire_visual_overlap, 0.0)}"/>
+    <xacro:property name="wire_visual_origin_z" value="${wire_visual_seg_length * 0.5}"/>
+    <link name="${'wire_vis_%02d_link' % idx}">
+      <inertial>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <mass value="0.01"/>
+        <inertia ixx="1e-5" ixy="0" ixz="0" iyy="1e-5" iyz="0" izz="1e-5"/>
+      </inertial>
+      <xacro:if value="${wire_visual_seg_length &gt; 1.0e-6}">
+        <visual name="${'wire_vis_%02d_visual' % idx}">
+          <origin xyz="0 0 ${wire_visual_origin_z}" rpy="0 0 0"/>
+          <geometry>
+            <cylinder radius="${wire_radius}" length="${wire_visual_seg_length}"/>
+          </geometry>
+          <material name="rope_gray">
+            <color rgba="0.95 0.95 0.95 1.0"/>
+          </material>
+        </visual>
+      </xacro:if>
+    </link>
+    <joint name="${'wire_vis_%02d_joint' % idx}" type="prismatic">
+      <parent link="sway_link"/>
+      <child link="${'wire_vis_%02d_link' % idx}"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <axis xyz="0 0 -1"/>
+      <limit
+        lower="${winch_min_length * idx_norm}"
+        upper="${winch_max_length * idx_norm}"
+        effort="10.0"
+        velocity="4.5"/>
+    </joint>
+    <gazebo reference="${'wire_vis_%02d_link' % idx}">
+      <gravity>false</gravity>
+    </gazebo>
+  </xacro:macro>
+
+  <xacro:macro name="wire_visual_segments_recursive" params="idx">
+    <xacro:if value="${idx > 0}">
+      <xacro:property name="idx_norm" value="${pow(float(idx) / wire_visual_segments, wire_curve_exp)}"/>
+      <xacro:property name="idx_prev_norm" value="${pow(max(float(idx) - 1.0, 0.0) / wire_visual_segments, wire_curve_exp)}"/>
+      <xacro:wire_visual_segment idx="${idx}" idx_norm="${idx_norm}" idx_prev_norm="${idx_prev_norm}"/>
+      <xacro:wire_visual_segments_recursive idx="${idx - 1}"/>
+    </xacro:if>
+  </xacro:macro>
+
+  <xacro:macro name="wire_visual_ros2_control_joint" params="idx idx_norm">
+    <joint name="${'wire_vis_%02d_joint' % idx}">
+      <command_interface name="position"/>
+      <state_interface name="position">
+        <param name="initial_value">${winch_min_length * idx_norm}</param>
+      </state_interface>
+      <state_interface name="velocity"/>
+    </joint>
+  </xacro:macro>
+
+  <xacro:macro name="wire_visual_ros2_control_recursive" params="idx">
+    <xacro:if value="${idx > 0}">
+      <xacro:property name="idx_norm" value="${pow(float(idx) / wire_visual_segments, wire_curve_exp)}"/>
+      <xacro:wire_visual_ros2_control_joint idx="${idx}" idx_norm="${idx_norm}"/>
+      <xacro:wire_visual_ros2_control_recursive idx="${idx - 1}"/>
+    </xacro:if>
+  </xacro:macro>
+
+  <!-- Keep crane anchored in simulation so yaw commands rotate the upper structure
+       relative to the base instead of spinning the whole robot. -->
+  <xacro:if value="${fixed_base}">
+    <link name="world"/>
+    <joint name="world_to_base_fixed_joint" type="fixed">
+      <parent link="world"/>
+      <child link="base_link"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+    </joint>
+  </xacro:if>
+
+  <!-- BASE / TOWER -->
+  <link name="base_link">
+    <inertial>
+      <origin xyz="0 0 0.5" rpy="0 0 0"/>
+      <mass value="100000"/>
+      <inertia ixx="257142.857" ixy="0" ixz="0" iyy="257142.857" iyz="0" izz="342857.143"/>
+    </inertial>
+
+    <!-- Visual: behold mesh -->
+    <visual name="base_visual">
+      <geometry>
+        <mesh filename="${mesh_dir}/tower.obj"
+              scale="${scale} ${scale} ${scale}"/>
+      </geometry>
+    </visual>
+
+    <!-- Collision: keep pedestal compact to avoid deck overlap locking yaw -->
+    <collision name="base_collision_box">
+      <origin xyz="0 0 0.35" rpy="0 0 0"/>
+      <geometry>
+        <box size="1.0 1.0 0.7"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <!-- BOOM -->
+  <link name="boom_link">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="70000"/>
+      <!-- Must satisfy triangle inequality: ixx + iyy >= izz (and permutations). -->
+      <inertia ixx="140000.0" ixy="0" ixz="0" iyy="140000.0" iyz="0" izz="242666.667"/>
+    </inertial>
+
+    <!-- Visual: behold mesh -->
+    <visual name="boom_visual">
+      <geometry>
+        <mesh filename="${mesh_dir}/boom.obj"
+              scale="${scale} ${scale} ${scale}"/>
+      </geometry>
+    </visual>
+
+    <!-- Collision: slim debug shape to reduce false contacts with platform geometry -->
+    <collision name="boom_collision_box">
+      <origin xyz="0.0 0.0 0.0" rpy="0 0 0"/>
+      <geometry>
+        <box size="1.2 0.12 0.12"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <!-- Boom roterer på toppen av tower -->
+  <joint name="boom_yaw_joint" type="revolute">
+    <parent link="base_link"/>
+    <child link="boom_link"/>
+    <origin xyz="0 0 ${boom_z}" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-3.14159" upper="3.14159" effort="2000000" velocity="0.10"/>
+    <dynamics damping="28.0" friction="14.0"/>
+  </joint>
+
+  <!-- TROLLEY -->
+  <link name="trolley_link">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="8000"/>
+      <inertia ixx="6400" ixy="0" ixz="0" iyy="6400" iyz="0" izz="9600"/>
+    </inertial>
+
+    <!-- Visual: behold mesh -->
+    <visual name="trolley_visual">
+      <geometry>
+        <mesh filename="${mesh_dir}/trolley.obj"
+              scale="${scale} ${scale} ${scale}"/>
+      </geometry>
+    </visual>
+
+    <!-- Collision intentionally omitted for trolley to keep wire+sway simulation lightweight. -->
+  </link>
+
+  <!-- Trolley beveger seg langs boom (prismatic). -->
+  <joint name="trolley_joint" type="prismatic">
+    <parent link="boom_link"/>
+    <child link="trolley_link"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <axis xyz="1 0 0"/>
+    <limit lower="${trolley_min}" upper="${trolley_max}" effort="300000" velocity="1.4"/>
+    <dynamics damping="20.0" friction="10.0"/>
+  </joint>
+
+  <!-- Visual winch drum on trolley. It mimics wire extension so you can see reeling. -->
+  <link name="winch_drum_link">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="5.0"/>
+      <inertia ixx="0.05" ixy="0" ixz="0" iyy="0.05" iyz="0" izz="0.05"/>
+    </inertial>
+    <visual name="winch_drum_visual">
+      <origin xyz="0 0 0" rpy="1.5708 0 0"/>
+      <geometry>
+        <cylinder radius="${winch_drum_radius}" length="${winch_drum_length}"/>
+      </geometry>
+      <material name="drum_dark">
+        <color rgba="0.15 0.15 0.15 1.0"/>
+      </material>
+    </visual>
+  </link>
+
+  <joint name="winch_drum_joint" type="revolute">
+    <parent link="trolley_link"/>
+    <child link="winch_drum_link"/>
+    <origin xyz="${wire_anchor_x} ${wire_anchor_y} ${wire_anchor_z + 0.16}" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-1000.0" upper="1000.0" effort="10.0" velocity="20.0"/>
+  </joint>
+
+  <gazebo reference="winch_drum_link">
+    <gravity>false</gravity>
+  </gazebo>
+
+  <link name="wire_top_cover_link">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="0.001"/>
+      <inertia ixx="1e-7" ixy="0" ixz="0" iyy="1e-7" iyz="0" izz="1e-7"/>
+    </inertial>
+    <visual name="wire_top_cover_visual">
+      <origin xyz="0 0 ${wire_top_cover_length * 0.5}" rpy="0 0 0"/>
+      <geometry>
+        <cylinder radius="${wire_top_cover_radius}" length="${wire_top_cover_length}"/>
+      </geometry>
+      <material name="wire_top_cover_sky">
+        <color rgba="0.72 0.68 0.08 1.0"/>
+      </material>
+    </visual>
+  </link>
+
+  <joint name="wire_top_cover_joint" type="fixed">
+    <parent link="trolley_link"/>
+    <child link="wire_top_cover_link"/>
+    <origin xyz="${wire_anchor_x} ${wire_anchor_y} ${wire_anchor_z + 2.80}" rpy="0 0 0"/>
+  </joint>
+
+  <gazebo reference="wire_top_cover_link">
+    <gravity>false</gravity>
+    <cast_shadows>false</cast_shadows>
+  </gazebo>
+
+  <!-- Passive sway hinge (single-axis pendulum approximation) -->
+  <link name="sway_link">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="40.0"/>
+      <inertia ixx="0.4" ixy="0" ixz="0" iyy="0.4" iyz="0" izz="0.4"/>
+    </inertial>
+  </link>
+
+  <joint name="wire_sway_joint" type="revolute">
+    <parent link="trolley_link"/>
+    <child link="sway_link"/>
+    <origin xyz="${wire_anchor_x} ${wire_anchor_y} ${wire_anchor_z}" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="${-wire_sway_limit}" upper="${wire_sway_limit}" effort="2000" velocity="0.2"/>
+    <dynamics damping="${wire_sway_damping}" friction="${wire_sway_friction}"/>
+  </joint>
+
+  <!-- Winch extension from sway pivot to hook. This gives real up/down cable motion while
+       preserving pendulum sway around wire_sway_joint. -->
+  <link name="hook_link">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="1200"/>
+      <inertia ixx="95.0" ixy="0" ixz="0" iyy="95.0" iyz="0" izz="95.0"/>
+    </inertial>
+  </link>
+
+  <joint name="winch_joint" type="prismatic">
+    <parent link="sway_link"/>
+    <child link="hook_link"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <axis xyz="0 0 -1"/>
+    <limit lower="${winch_min_length}" upper="${winch_max_length}" effort="300000" velocity="2.2"/>
+    <dynamics damping="1800.0" friction="700.0"/>
+  </joint>
+
+  <link name="wire_top_visual_link">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="0.001"/>
+      <inertia ixx="1e-7" ixy="0" ixz="0" iyy="1e-7" iyz="0" izz="1e-7"/>
+    </inertial>
+    <visual name="wire_top_visual">
+      <origin xyz="0 0 ${-wire_visual_half_length * 0.5}" rpy="0 0 0"/>
+      <geometry>
+        <cylinder radius="${wire_radius}" length="${wire_visual_half_length}"/>
+      </geometry>
+      <material name="rope_gray">
+        <color rgba="0.95 0.95 0.95 1.0"/>
+      </material>
+    </visual>
+  </link>
+  <joint name="wire_top_visual_joint" type="fixed">
+    <parent link="sway_link"/>
+    <child link="wire_top_visual_link"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+  </joint>
+  <gazebo reference="wire_top_visual_link">
+    <gravity>false</gravity>
+  </gazebo>
+
+  <link name="wire_bottom_visual_link">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="0.001"/>
+      <inertia ixx="1e-7" ixy="0" ixz="0" iyy="1e-7" iyz="0" izz="1e-7"/>
+    </inertial>
+    <visual name="wire_bottom_visual">
+      <origin xyz="0 0 ${wire_visual_half_length * 0.5}" rpy="0 0 0"/>
+      <geometry>
+        <cylinder radius="${wire_radius}" length="${wire_visual_half_length}"/>
+      </geometry>
+      <material name="rope_gray">
+        <color rgba="0.95 0.95 0.95 1.0"/>
+      </material>
+    </visual>
+  </link>
+  <joint name="wire_bottom_visual_joint" type="fixed">
+    <parent link="hook_link"/>
+    <child link="wire_bottom_visual_link"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+  </joint>
+  <gazebo reference="wire_bottom_visual_link">
+    <gravity>false</gravity>
+  </gazebo>
+
+  <xacro:wire_visual_segments_recursive idx="${int(wire_visual_segments)}"/>
+
+  <!-- BLOCK / payload -->
+  <link name="block_link">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="1200"/>
+      <inertia ixx="217.5" ixy="0" ixz="0" iyy="217.5" iyz="0" izz="217.5"/>
+    </inertial>
+
+    <!-- Visual: behold mesh -->
+    <visual name="block_visual">
+      <!-- block.obj is exported with a global offset; recenter it on block_link -->
+      <origin xyz="30.0582 0.0 -4.5062" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="${mesh_dir}/block.obj"
+              scale="${scale} ${scale} ${scale}"/>
+      </geometry>
+    </visual>
+
+    <!-- Collision: liten boks -->
+    <collision name="block_collision_box">
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.3 0.3 0.3"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <!-- Hang block at hook (which is moved by winch_joint) -->
+  <joint name="block_fixed_joint" type="fixed">
+    <parent link="hook_link"/>
+    <child link="block_link"/>
+    <origin xyz="0 0 ${hook_mount_z_correction}" rpy="0 0 0"/>
+  </joint>
+
+  <link name="boom_tip_pan_link">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="0.001"/>
+      <inertia ixx="1e-7" ixy="0" ixz="0" iyy="1e-7" iyz="0" izz="1e-7"/>
+    </inertial>
+    <visual name="boom_tip_pan_visual">
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <sphere radius="0.005"/>
+      </geometry>
+      <material name="view_marker_hidden">
+        <color rgba="0 0 0 0"/>
+      </material>
+    </visual>
+  </link>
+  <joint name="boom_tip_pan_joint" type="revolute">
+    <parent link="boom_link"/>
+    <child link="boom_tip_pan_link"/>
+    <origin xyz="${trolley_min} 0 ${wire_anchor_z + 0.35}" rpy="0 1.5708 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-1.39626" upper="1.39626" effort="10.0" velocity="2.0"/>
+    <dynamics damping="2.0"/>
+  </joint>
+  <link name="boom_tip_view_link">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="0.001"/>
+      <inertia ixx="1e-7" ixy="0" ixz="0" iyy="1e-7" iyz="0" izz="1e-7"/>
+    </inertial>
+    <visual name="boom_tip_view_visual">
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <sphere radius="0.005"/>
+      </geometry>
+      <material name="view_marker_hidden">
+        <color rgba="0 0 0 0"/>
+      </material>
+    </visual>
+  </link>
+  <joint name="boom_tip_tilt_joint" type="revolute">
+    <parent link="boom_tip_pan_link"/>
+    <child link="boom_tip_view_link"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-1.39626" upper="1.39626" effort="10.0" velocity="2.0"/>
+    <dynamics damping="2.0"/>
+  </joint>
+  <gazebo reference="boom_tip_view_link">
+    <sensor name="boom_tip_camera" type="camera">
+      <always_on>false</always_on>
+      <update_rate>30</update_rate>
+      <visualize>false</visualize>
+      <topic>/crane/boom_tip_camera/image</topic>
+      <camera>
+        <horizontal_fov>1.22173048</horizontal_fov>
+        <image>
+          <width>800</width>
+          <height>450</height>
+          <format>R8G8B8</format>
+        </image>
+        <clip>
+          <near>0.05</near>
+          <far>500.0</far>
+        </clip>
+      </camera>
+    </sensor>
+  </gazebo>
+  <gazebo>
+    <plugin filename="gz-sim-joint-position-controller-system" name="gz::sim::systems::JointPositionController">
+      <joint_name>boom_tip_pan_joint</joint_name>
+      <topic>/crane/boom_tip_camera/pan_cmd</topic>
+      <p_gain>18.0</p_gain>
+      <i_gain>0.6</i_gain>
+      <d_gain>0.4</d_gain>
+      <i_max>0.5</i_max>
+      <i_min>-0.5</i_min>
+      <cmd_max>60</cmd_max>
+      <cmd_min>-60</cmd_min>
+    </plugin>
+    <plugin filename="gz-sim-joint-position-controller-system" name="gz::sim::systems::JointPositionController">
+      <joint_name>boom_tip_tilt_joint</joint_name>
+      <topic>/crane/boom_tip_camera/tilt_cmd</topic>
+      <p_gain>18.0</p_gain>
+      <i_gain>0.6</i_gain>
+      <d_gain>0.4</d_gain>
+      <i_max>0.5</i_max>
+      <i_min>-0.5</i_min>
+      <cmd_max>60</cmd_max>
+      <cmd_min>-60</cmd_min>
+    </plugin>
+  </gazebo>
+
+  <link name="hook_mid_pan_link">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="0.001"/>
+      <inertia ixx="1e-7" ixy="0" ixz="0" iyy="1e-7" iyz="0" izz="1e-7"/>
+    </inertial>
+    <visual name="hook_mid_pan_visual">
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <sphere radius="0.005"/>
+      </geometry>
+      <material name="view_marker_hidden">
+        <color rgba="0 0 0 0"/>
+      </material>
+    </visual>
+  </link>
+  <joint name="hook_mid_pan_joint" type="revolute">
+    <parent link="block_link"/>
+    <child link="hook_mid_pan_link"/>
+    <origin xyz="-0.30 0 0.50" rpy="0 1.5708 3.14159"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-1.39626" upper="1.39626" effort="10.0" velocity="2.0"/>
+    <dynamics damping="2.0"/>
+  </joint>
+  <link name="hook_mid_view_link">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="0.001"/>
+      <inertia ixx="1e-7" ixy="0" ixz="0" iyy="1e-7" iyz="0" izz="1e-7"/>
+    </inertial>
+    <visual name="hook_mid_view_visual">
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <sphere radius="0.005"/>
+      </geometry>
+      <material name="view_marker_hidden">
+        <color rgba="0 0 0 0"/>
+      </material>
+    </visual>
+  </link>
+  <joint name="hook_mid_tilt_joint" type="revolute">
+    <parent link="hook_mid_pan_link"/>
+    <child link="hook_mid_view_link"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-1.39626" upper="1.39626" effort="10.0" velocity="2.0"/>
+    <dynamics damping="2.0"/>
+  </joint>
+  <gazebo reference="hook_mid_view_link">
+    <sensor name="hook_mid_camera" type="camera">
+      <always_on>false</always_on>
+      <update_rate>30</update_rate>
+      <visualize>false</visualize>
+      <topic>/crane/hook_mid_camera/image</topic>
+      <camera>
+        <horizontal_fov>1.22173048</horizontal_fov>
+        <image>
+          <width>800</width>
+          <height>450</height>
+          <format>R8G8B8</format>
+        </image>
+        <clip>
+          <near>0.05</near>
+          <far>500.0</far>
+        </clip>
+      </camera>
+    </sensor>
+  </gazebo>
+  <gazebo>
+    <plugin filename="gz-sim-joint-position-controller-system" name="gz::sim::systems::JointPositionController">
+      <joint_name>hook_mid_pan_joint</joint_name>
+      <topic>/crane/hook_mid_camera/pan_cmd</topic>
+      <p_gain>18.0</p_gain>
+      <i_gain>0.6</i_gain>
+      <d_gain>0.4</d_gain>
+      <i_max>0.5</i_max>
+      <i_min>-0.5</i_min>
+      <cmd_max>60</cmd_max>
+      <cmd_min>-60</cmd_min>
+    </plugin>
+    <plugin filename="gz-sim-joint-position-controller-system" name="gz::sim::systems::JointPositionController">
+      <joint_name>hook_mid_tilt_joint</joint_name>
+      <topic>/crane/hook_mid_camera/tilt_cmd</topic>
+      <p_gain>18.0</p_gain>
+      <i_gain>0.6</i_gain>
+      <d_gain>0.4</d_gain>
+      <i_max>0.5</i_max>
+      <i_min>-0.5</i_min>
+      <cmd_max>60</cmd_max>
+      <cmd_min>-60</cmd_min>
+    </plugin>
+  </gazebo>
+
+  <link name="cabin_pan_link">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="0.001"/>
+      <inertia ixx="1e-7" ixy="0" ixz="0" iyy="1e-7" iyz="0" izz="1e-7"/>
+    </inertial>
+    <visual name="cabin_pan_visual">
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <sphere radius="0.005"/>
+      </geometry>
+      <material name="view_marker_hidden">
+        <color rgba="0 0 0 0"/>
+      </material>
+    </visual>
+  </link>
+  <joint name="cabin_pan_joint" type="revolute">
+    <parent link="boom_link"/>
+    <child link="cabin_pan_link"/>
+    <!-- Mount the cabin camera to the rotating upper structure so it follows boom yaw.
+         The boom link frame is offset by boom_z from base_link, so compensate here to
+         keep the camera in the same physical cabin position. -->
+    <origin xyz="-2.0 -3.85 ${15.5 - boom_z}" rpy="0.00 0.28 3.10"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-1.39626" upper="1.39626" effort="10.0" velocity="2.0"/>
+    <dynamics damping="2.0"/>
+  </joint>
+  <link name="cabin_view_link">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="0.001"/>
+      <inertia ixx="1e-7" ixy="0" ixz="0" iyy="1e-7" iyz="0" izz="1e-7"/>
+    </inertial>
+    <visual name="cabin_view_visual">
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <sphere radius="0.005"/>
+      </geometry>
+      <material name="view_marker_hidden">
+        <color rgba="0 0 0 0"/>
+      </material>
+    </visual>
+  </link>
+  <joint name="cabin_tilt_joint" type="revolute">
+    <parent link="cabin_pan_link"/>
+    <child link="cabin_view_link"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-1.39626" upper="1.39626" effort="10.0" velocity="2.0"/>
+    <dynamics damping="2.0"/>
+  </joint>
+  <gazebo reference="cabin_view_link">
+    <sensor name="cabin_camera" type="camera">
+      <always_on>false</always_on>
+      <update_rate>30</update_rate>
+      <visualize>false</visualize>
+      <topic>/crane/cabin_camera/image</topic>
+      <camera>
+        <horizontal_fov>1.22173048</horizontal_fov>
+        <image>
+          <width>800</width>
+          <height>450</height>
+          <format>R8G8B8</format>
+        </image>
+        <clip>
+          <near>0.05</near>
+          <far>1000.0</far>
+        </clip>
+      </camera>
+    </sensor>
+  </gazebo>
+  <gazebo>
+    <plugin filename="gz-sim-joint-position-controller-system" name="gz::sim::systems::JointPositionController">
+      <joint_name>cabin_pan_joint</joint_name>
+      <topic>/crane/cabin_camera/pan_cmd</topic>
+      <p_gain>18.0</p_gain>
+      <i_gain>0.6</i_gain>
+      <d_gain>0.4</d_gain>
+      <i_max>0.5</i_max>
+      <i_min>-0.5</i_min>
+      <cmd_max>60</cmd_max>
+      <cmd_min>-60</cmd_min>
+    </plugin>
+    <plugin filename="gz-sim-joint-position-controller-system" name="gz::sim::systems::JointPositionController">
+      <joint_name>cabin_tilt_joint</joint_name>
+      <topic>/crane/cabin_camera/tilt_cmd</topic>
+      <p_gain>18.0</p_gain>
+      <i_gain>0.6</i_gain>
+      <d_gain>0.4</d_gain>
+      <i_max>0.5</i_max>
+      <i_min>-0.5</i_min>
+      <cmd_max>60</cmd_max>
+      <cmd_min>-60</cmd_min>
+    </plugin>
+  </gazebo>
+
+  <!-- Gazebo Sim ros2_control bridge -->
+  <gazebo>
+    <plugin filename="libgz_ros2_control-system.so"
+            name="gz_ros2_control::GazeboSimROS2ControlPlugin">
+      <ros>
+        <remapping>/robot_description:=/palfinger/robot_description</remapping>
+      </ros>
+      <parameters>$(arg controllers_yaml)</parameters>
+    </plugin>
+  </gazebo>
+
+  <!-- ros2_control definition -->
+  <ros2_control name="CraneSystem" type="system">
+    <hardware>
+      <plugin>gz_ros2_control/GazeboSimSystem</plugin>
+      <!-- Increase position interface stiffness so joints hold against payload/wire load. -->
+      <param name="position_proportional_gain">25.0</param>
+    </hardware>
+
+    <joint name="boom_yaw_joint">
+      <command_interface name="position"/>
+      <state_interface name="position">
+        <param name="initial_value">0.0</param>
+      </state_interface>
+      <state_interface name="velocity"/>
+    </joint>
+
+    <joint name="trolley_joint">
+      <command_interface name="position"/>
+      <state_interface name="position">
+        <param name="initial_value">0.0</param>
+      </state_interface>
+      <state_interface name="velocity"/>
+    </joint>
+
+    <joint name="winch_joint">
+      <command_interface name="position"/>
+      <state_interface name="position">
+        <param name="initial_value">${winch_min_length}</param>
+      </state_interface>
+      <state_interface name="velocity"/>
+    </joint>
+
+    <joint name="wire_sway_joint">
+      <command_interface name="position"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+      <param name="initial_value">0.0</param>
+    </joint>
+
+    <joint name="winch_drum_joint">
+      <command_interface name="position"/>
+      <state_interface name="position">
+        <param name="initial_value">${winch_min_length * 8.0}</param>
+      </state_interface>
+      <state_interface name="velocity"/>
+    </joint>
+
+    <xacro:wire_visual_ros2_control_recursive idx="${int(wire_visual_segments)}"/>
+  </ros2_control>
+
+</robot>
